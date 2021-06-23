@@ -1,0 +1,241 @@
+你先说dubbo是啥，然后说组成有provider，，，然后分了十层，每层干嘛的，还提供了spi机制方便扩展，你说我还做过基于dubbo全链路追踪。改造过企业的单机服务
+我觉得一个是要看日志吧，另外一个你平时要做好主备，还有看数据来源吧  双写机制啥的，定时给mysql开启同步机制
+
+<jvm>
+jdk1.8默认并行垃圾收集器parallel Scavenge(新生代) + Parallel Old(老年代) 并行 jdk1.9 默认垃圾收集器G1
+-XX:+UseSerialGC 串行  -XX:+UseParNewGC  -XX:+UseParallelGC并行GC   CMS  G1  ZGC  shenandoahGC
+CMS缺点：可调参数复杂(70)、标记-清除算法对内存碎片无能为力、浮动垃圾无法处理、针对老年代的收集器和年轻收集器配合较低、有G1、shenandoahGC更好的选择
+引用计数（无法解决循环依赖问题） 
+jps  jmap jstat jstack jcmd等 其他jconsole jmc visualGC工具
+GC各自特点
+串行Serial特点：cpu利用率最高，停顿时间即用户等待时间比较长。适用场景：小型应用
+并行Parallel收集器:采用多线程来通过扫描并压缩堆,特点：停顿时间短，回收效率高，对吞吐量要求高。适用场景：大型应用，科学计算，大规模数据采集等
+CMS收集器：使用多线程的算法去扫描堆，对发现未使用的对象进行回收。特点：响应时间优先，减少垃圾收集停顿时间，适应场景：服务器、电信领域等。
+G1收集器:在G1中，堆被划分成 许多个连续的区域(region)。采用G1算法进行回收，吸收了CMS收集器特点。特点：支持很大的堆，高吞吐量 ,实时目标：可配置在N毫秒内最多只占用M毫秒的时间进行垃圾回收
+xms xmx设置的小(频率高，停顿小)， 设置的大(频率小，停顿大)
+调优指标:1.分配速率  2.晋升速率  尽量让这个两个速率减小   内存越小manoi fullGC的频率加快，内存越大 GC的越频繁
+-XX:HeapDumpPath  指定oom时 dump信息，用本地VisualVM分析
+
+<netty>
+同步异步(机制) 阻塞非阻塞(状态) 
+bio 一个请求对应一个线程的方式(同步阻塞)   
+nio 基于Reactor selector引入多线程 (NIO同步非阻塞在操作buffer时，线程可以去干其他事情，io阻塞在做read,write时阻塞，)    
+Channel(通道)  selector(选择器)  buffer(缓冲区) 特点 关系  基于epoll   Reactor/Proactor；
+aio 异步非阻塞
+
+
+Mina  NIO     iobuffer
+mina与Netty   项目开发相对较早
+
+<mq>
+Mq的可靠性 ack确认机制，持久化，事务
+topic 和queue
+activeMq的消息持久化机制有JDBC,AMQ，kahaDB,levelDB
+重复消息 ：1.消费者的事务手动提交了吗？ 2.手动签收没有确认
+异步投递、延迟投递，定时投递  
+重试机制 
+如何保证消息不被重复消费，幂等性问题 <网络原因>
+JMS: 
+JMSDestination:消息目的地
+JMSDeliveryMode:消息持久化模式
+JMSExpiration:消息过期时间
+JMSPriority:消息的优先级
+JMSMessageID:消息幂等性问题
+如何保证消息从队列里拿到数据按顺序执行？<通过算法。将需要保存先后顺序的消息放到同一个消息队列中>
+消息过期失效，堆积 <可以写临时程序，查询数据再次数据发送>
+用mq把用户请求和处理分离，只要用户发送请求到MQ，就立马返回响应，
+让用户在客户端觉得速度看起来很快。服务端请求数据库的时候，用了缓存，同时还对数据库做了优化
+
+rocketmq就是用了mmap和pagecache提升了读写能力
+mmap用的就是mappedbytebuffer里面的map函数
+
+
+<mysql>
+mysql中多使用联合索引、覆盖索引重要优化手段之一。
+单列索引升级为联合索引，可以避免回表
+1.优化sql和索引   2.缓存 redis      3.主从复制，读写分离 4.优先先垂直拆分，再考虑水平拆分  5.分布式
+重做日志（redo log）确保事务的持久性。防止在发生故障的时间点，尚有脏页未写入磁盘，在重启mysql服务的时候，根据redo log进行重做，从而达到事务的持久性这一特性。
+回滚 日志 (undo log) 保存了事务发生之前的数据的一个版本，可以用于回滚，同时可以提供多版本并发控制下的读（MVCC），也即非锁定读
+二进制日志（binlog）用于复制，在主从复制中，从库利用主库上的binlog进行重播，实现主从同步。 
+缓冲池 buffer pool
+Mysql的WAL（write-Ahead loggin机制 先写日志，再写磁盘  随机写顺序写
+Change buffer<普通索引>  组织性提交  減少io操作  
+唯一索引(unique)和普通索引 区别    间隙锁基于索引
+mysql 性能io瓶颈 考虑减少binlog  写盘次数  
+mkdir(make directoty)
+rmdir
+undo log的作用是事务回滚或者事务提交失败时用来恢复数据的   （redo log<断点> 物理日志、undo log<事务> 是逻辑日志） 
+order by ：全字段排序 sort_buffer    rowId
+快照读(select) 当前读(update,insert,delect) 
+列裁剪，谓词下推，小表驱动，分期过滤，索引
+
+
+<监控>
+Jps: 打印当前用户启动的所有进程ID,快速定位java进程ID
+jmap(java memory map)输出所有内存中对象的工具  dump
+jstack  分析cpu占用率（top  printf  jstack）
+jinfo 查看jvm信息
+线上问题排查:    (系统异常、业务服务异常)
+cpu 内存 磁盘 网络等问题
+Linux性能分析工具:top(cpu)、free(内存)、df(磁盘)、dstat(网络流量)、pstack、vmstat、strace(底层系统调用) 等。
+调优很简单啊，一般oom 就用jmap(打印内存情況),jstack （cpu很高用jstack指令）
+一般线上可以用btrace,还有阿里巴巴的arthas
+变量主存存储，每个线程会读取一个副本，修改后，刷到主存（工作内存  和主内存）
+还有设置根据内存消耗性或者cpu计算型项目设置选用的垃圾回收器啥的 
+你就说我们会根据项目启动后占用的内存，调整堆内存大小-xms -xmx内存
+还有栈内存
+还有printstump啥吧，打印堆日志，方便排查oom
+比如Java虚拟机内存管理和数据库优化是绝大多数项目都要遇到的两大问题，大家都可以在叙述项目经验时说，在这个项目里，我们需要考虑内存因素，
+因为我们的代码只允许在2G内存环境中运行，而且对数据库性能要求比较高，所以我们经常要监控优化内存和数据库里的SQL语句。这样当面试官深入提问时，就能抛出自己准备好的虚拟机内存优化和数据库优化方面的说辞。
+Linux常用简单命令：ssh、vim、scp、ps、gerp、sed、awk、cat、tail，df -h、top，shell、chmod、sh、tar、find、wc、ln、touch|  
+
+实例找出某个Java进程中最耗费CPU的Java线程并定位堆栈信息，用到的命令有ps、top、printf、jstack、grep。
+TPS(transactions per second)每秒事务数，
+QPS(Queries per second)每秒查询率
+1.JVM频繁full gc 快速排查   常规做法jmap导出堆内存快照+数据库网络IO   service dao 还是数据库问题
+2.内存泄漏   大对象
+3.幂等问题   记录表
+4.缓存雪崩问题   保证每个缓存记录过期时间的离散性
+5.磁盘IO导致线程阻塞 shell脚本自动定时执行jstack
+6.数据库死锁问题
+7域名劫持
+
+<HashMap>
+链表长度>8&数组大小>=64才转红黑树
+hash一致性算法
+HashMap的hash算法是扰动函数  高16和低16进行异或运算 （减少碰撞，位运算高效）
+(h==key.hashCode())^(h>>>16)     （n-1）&hash
+加载因子0.75,默认大小16,若给值是2最小幂次方
+数组长度是2的倍数  扩容时
+三点主要优化:
+加入红黑树，头插法改成尾插法，1.7插入先判断是否需要扩容再插入，1.8先插入在判断是否需要扩容
+数据覆盖问题
+ ConcurrentHashMap 的分段锁 volatile +cas+synchronized  
+有序LinkedHashMap 和treeMap
+红黑树是自平衡的二查找树，满足二查找的树特质外满足区域五个条件
+
+
+过滤器zuul:  路由<服务转发>和过滤<请求校验>
+eureka ap(可用性)  
+docker run -d -i -t <>
+docker attack 进入
+docker start 容器id
+
+
+<多线程>
+Thread 的五种状态 
+wait  notify interrupt  stop  上下文切换
+daemon(主线程结束了，守护线程立马结束)   join(直到子线程结束)
+涉及到的模式:策略模式、模版模式
+引发的问题: 锁泄漏、死锁、锁死、上下文切换
+锁的活性故障:死锁、锁死、线程饥饿、活锁
+线程池的死锁
+多线程异常处理：自定义设置setUncaughtExceptionHandler
+notify()和notifyAll()区别  join底层是wait wait需放在while中防止虚假唤醒、过早唤醒
+定时发邮件  记录日志  处理
+
+
+
+<synchronized>
+对象头两位锁标志位
+无论synchronized 关键字加在方法上还是对象上，如果它作用的对象是非静态的，则它取得的锁是对象，如果synchronized作用的对象是一个静态方法或者一个类，
+则它取得的锁是对类，该类所有的对象是同一把锁。
+每个对象只有一个锁(lock)与之相关联，谁拿到这个锁谁就可以运行它所控制的那段代码
+异常时会锁释放  String Integer不适合做锁对象
+自旋锁:线程数少，执行任务时间短  重量级:线程任务多，时间较长
+voliate 可见性 无法保证引用类型的可见性      缓存一致性协议<mesi>      禁止指令重排序
+强软弱虚(堆外内存)引用
+ThreadLocal   Thread的属性threadlocals,k是this(threadLocal)使用弱引用,v要存的值
+非公平索，可能引起饥饿线程
+锁升级:无锁、偏向锁、轻量级锁、重锁  1.6锁优化,锁释放开销     减小锁力度
+乐观锁:很乐观不去上锁，在更新修改是上锁，CAS<unsafe>,版本号
+乐观锁:很保守，每次都会上锁，synchronized、reedLock
+共享锁和独占锁<互斥锁>
+
+<redis>
+redis:  定期删除+惰性删除策略
+定期通过异步操作将数据flush到硬盘  
+AOF    死机  sync属性可以设置记录频率  增量持久化   设置重写条件
+ rdb  <dbLoad  dbSave(fork-创建子线程   cow-copy and write)>镜像全量持久化
+ 虚拟内存方式
+save命令调度rdbSave函数 会阻塞主线程的工程
+String:  计数
+hash: map<String,map<String,String>>    购物车 session单点登录
+list：消息队列 公众号
+set:堆放不重复的集合<交集、并集、差集> 共同喜好、全部喜好、自己喜欢    
+sorted set:  排行榜 热榜
+三种缓存策略：
+旁路缓存模式(适合读请求比较多的场景)
+读写穿透:
+异步缓存写入:
+
+
+
+<项目>
+关联查询  @Subselct <子查询 视图 >     注解@query  插件querydsl
+icid   jinkens 自动部署
+试验上传并发量做mq异步加调整表设计， 有时还会替换mongodb库，声波试验数据较大时，做读写分离，分库发表
+普通系统jvm无需做过多调整jvm已经做的非常好了，在我们这种数据处理系统 就需要做一些参数上调整性能调优
+滤波  指数放大 相位 频谱 积分 微分
+原始数据  试验数据 监控   统计，检测进度等
+重构:提高检测数据的处理、上传的速度，数据库字段冗余，优化界面布局，
+难点：可运营性，支持业务人员灵活配置
+令人头疼的用户重复（连续快速点击）提交问题，前端限制治标不治本；后端用sessonid在切面上实现，又需要前端存储，对所有请求数据加sessionId。
+最后用jedis中存储，用接口名+用户名当做key，根据不同的接口对不同的key可以单独设置时间，不仅保证了重复提交问题，也避免了恶意请求问题，同时还能自定义请求间隔。
+（期初担心redis缓存读写时间延误导致限制失效，后来发现多虑了，对一般的小系统来说，经性能测试，发现即使请求频率再提高100被也不会导致限制失效）
+
+
+
+
+springboot项目启动最核心的两个地方：
+@SpringBootApplication和SpringApplication.run。
+
+@SpringBootApplication里面包含了三个非常重要的注解：
+@Configuration，
+@EnableAutoConfiguration，
+@ComponentScan。
+@Configuration的作用就是加载JavaConfig配置类；
+ @ComponentScan的作用就是组件扫描，自动扫描并加载符合条件的组件（比如@Component和@Repository等）
+或者bean定义，最终将这些bean定义加载到IoC容器中。
+ @EnableAutoConfiguration：借助@Import的帮助，将所有符合自动配置条件的bean定义加载到IoC容器，
+比如：@EnableScheduling是通过@Import将Spring调度框架相关的bean定义都加载到IoC容器
+
+
+spring生命周期 class加载  
+spring ioc  aop bean
+<http>
+http协议基于tcp ，包括请求(request）和响应(response),http协议请求（request）分为请求参数（request params）和方法类型(request method）、请求头（request hearder）、请求体(request body) ，
+udp(不可靠协议) tcp(可靠协议)
+
+
+Web前端有哪些优化方案
+1.网站框架实行动静分离，动态资源和和静态资源部署到不同的服务器上面，使用nginx访问本地静态资源，通过nginx代理转发到tomcate访问动态资源
+2.在访问静态资源时在Url后缀加上时间戳，防止访问资源的与浏览器本地缓存资源存在冲突.
+3.页面减少HTTP请求，合并静态资源(如js或者css）并进行压缩。
+4.使用CDN内容分发，缓存静态资源，让用户访问最近的服务器，减少宽带之间的传输.
+
+父类静态变量——父类静态代码块——子类静态代码块——父类非静态变量——父类非静态代码块——父类构造函数——子类非静态变量——子类非静态代码块——子类构造函数
+
+<算法>
+深度优先搜索dfs  广度优先搜索nfs
+DFS(dep,、、、）        //dep代表目前DFS的深度
+{
+    if(找到解 || 走不下去){
+        、、、     //在此处进行相应的操作
+        return ;
+    }
+    枚举下一种情况，DFS（dep+1,、、、）
+}
+与运算&      n&(n-1)  判断奇偶  1的个数 
+或运算 |       最小2次幂  n|=n>>>1
+ 取反运算~（ -1对0）  
+ 异或运算^( 只要2个数对应的位相同，该位运算结果为0)   a^0=a     a^a=0    交换
+右移>>   左移 <<
+
+乘除2的倍数 、输入2的n次方: 1<<19
+判断偶数：a & 1或a&2
+对2的倍数取模：a % 8 = a & 8-1
+
+https://blog.csdn.net/hancoder/article/details/106922139
+https://www.yuque.com/books/share/256ea7ce-c74e-4b93-b590-f3ab10e2cbe2/qmi4tb
+https://gitee.com/SnailClimb/JavaGuide
